@@ -1,3 +1,4 @@
+require('dotenv').config()
 const Web3 = require('web3');
 var Contract = require('web3-eth-contract');
 const moment = require('moment-timezone')
