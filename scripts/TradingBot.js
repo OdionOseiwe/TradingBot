@@ -7,6 +7,7 @@ const IUniswapV2Router02 = require('@uniswap/v2-periphery/build/IUniswapV2Router
 // const IUniswapV2Pair = require('@uniswap/v2-core/build/IUniswapV2Pair.json')
 const IERC20 = require('@openzeppelin/contracts/build/contracts/ERC20.json')
 var HDWalletProvider = require("truffle-hdwallet-provider");
+const OD_USDabi = require('./OD_USD.json');
 
 // SERVER CONFIG
 const PORT = process.env.PORT || 5000
@@ -17,23 +18,42 @@ const app = express();
 const web3 = new Web3(new HDWalletProvider(process.env.ACCOUNT_PRIVATE_KEY, process.env.ALCHEMY_CELO_API_KEY_URL) )
 
 const uFactoryAddress = '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f'
-const ROUTERADDRESS = web3.utils.toChecksumAddress("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
+const RouterAddress = web3.utils.toChecksumAddress("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
 
-const usdAddress = "0xB42071eF8901912Cc92A59De04f6d49dd58a88A8"
-const TESTTOKENADDRESS = web3.utils.toChecksumAddress("0xaEbAdA4742e65fc6Aa66fC890b105d0516EDBC18")
+const testTokenAddress = web3.utils.toChecksumAddress("0xaEbAdA4742e65fc6Aa66fC890b105d0516EDBC18")
+
+const USDAddress = "0xB42071eF8901912Cc92A59De04f6d49dd58a88A8"
+
 
 const uFactory = new web3.eth.Contract(IUniswapV2Factory.abi, uFactoryAddress)
-const uRouter = new web3.eth.Contract(IUniswapV2Router02.abi, ROUTERADDRESS)
-const OD_testToken = new web3.eth.Contract(IERC20.abi, TESTTOKENADDRESS)
+const uRouter = new web3.eth.Contract(IUniswapV2Router02.abi, RouterAddress)
+const OD_testToken = new web3.eth.Contract(IERC20.abi, testTokenAddress)
+const OD_USD = new web3.eth.Contract(OD_USDabi.abi, USDAddress)
 
-const OD_testTokenAmount = web3.utils.toWei('1', 'Ether')
 const OD_testToken_SELL_PRICE = web3.utils.toWei('2', 'Ether')
-console.log("OD_testTokenAmount Amount", OD_testTokenAmount)
 
 console.log("running");
 
-async function sellOD_testToken(OD_testtoken, OD_USD) {
-  let path = [TESTTOKENADDRESS,usdAddress];
+async function sellOD_testToken(_OD_testToken_SELL_PRICE, _AmounOut) {
+  // Create event listener to listen to PairCreated
+  let path =[testTokenAddress,USDAddress]
+  
+
+    // const uPair = new web3.eth.Contract(IUniswapV2Pair.abi, pair)
+    // const token = new web3.eth.Contract(IERC20.abi, path[1]) // Path[1] will always be the token we are buying.
+
+    // console.log(`Checking liquidity...\n`)
+
+    // // Ideally you'll probably want to take a closer look at reserves, and price from the pair address
+    // // to determine if you want to snipe this particular token...
+    // const reserves = await uPair.methods.getReserves().call()
+
+    // if (reserves[0] == 0 && reserves[1] == 0) {
+    //     console.log(`Token has no liquidity...`)
+    //     return
+    // }
+
+    console.log(`Swapping TESTTOKEN...\n`)
 
 
   // Set Deadline 1 minute from now
@@ -43,33 +63,42 @@ async function sellOD_testToken(OD_testtoken, OD_USD) {
   console.log("Deadline", DEADLINE)
 
   // Perform Swap
-  console.log("balance");
+  console.log("checking OD_testtoken balance \n");
 
   let bal = await OD_testToken.methods.balanceOf(process.env.ACCOUNT).call()
 
   console.log(bal, "my sepolia balance of testToken");
 
-  console.log("gas");
+  let bal2 = await OD_testToken.methods.balanceOf(process.env.ACCOUNT).call()
 
-  console.log("approving");
+  console.log(bal2, "my sepolia balance of OD_USDToken");
+  const gasApprove = await OD_testToken.methods.approve(RouterAddress, _OD_testToken_SELL_PRICE).estimateGas({ from: process.env.ACCOUNT })
 
-  const gasApprove = await OD_testToken.methods.approve(ROUTERADDRESS, OD_testToken_SELL_PRICE).estimateGas({ from: process.env.ACCOUNT })
+  console.log(gasApprove, "gas for approving");
 
-  console.log(gasApprove);
-
-  await OD_testToken.methods.approve(ROUTERADDRESS, OD_testToken_SELL_PRICE).send({ from: process.env.ACCOUNT ,  gas: gasApprove  })
+  await OD_testToken.methods.approve(RouterAddress, _OD_testToken_SELL_PRICE).send({ from: process.env.ACCOUNT ,  gas: gasApprove  })
+  console.log("finishing approving");
 
   console.log('Performing swap...')
-  const gas = await uRouter.methods.swapExactTokensForTokens(OD_testtoken,OD_USD,path, otherAccount, DEADLINE).estimateGas({ from: process.env.ACCOUNT })
-  await uRouter.methods.swapExactTokensForTokens(OD_testtoken, OD_USD, path, otherAccount, DEADLINE).send({ from: process.env.ACCOUNT, gas: gas })
+  const gas = await uRouter.methods.swapExactTokensForTokens(_OD_testToken_SELL_PRICE,_AmounOut,path, process.env.ACCOUNT, DEADLINE).estimateGas({ from: process.env.ACCOUNT })
+  await uRouter.methods.swapExactTokensForTokens(_OD_testToken_SELL_PRICE, _AmounOut, path, process.env.ACCOUNT, DEADLINE).send({ from: process.env.ACCOUNT, gas: gas })
 
   console.log("finish swap");
-  console.log(`Successful Swap: https://sepolia.etherscan.io/tx/${result.transactionHash}`)
+
+  const symbol = await OD_USD.methods.symbol().call()
+  const tokenBalance = await OD_USD.methods.balanceOf(process.env.ACCOUNT).call()
+
+  console.log(tokenBalance);
+
+  console.log(`Successfully swapped ${_OD_testToken_SELL_PRICE} Od_testtoken for ${web3.utils.fromWei(tokenBalance.toString(), 'ether')} ${symbol}\n`)
+
+  // console.log(`Successful Swap: https://sepolia.etherscan.io/tx/${result.transactionHash}`)
+
 }
 
 
-
-sellOD_testToken(1, 1).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
+  sellOD_testToken(OD_testToken_SELL_PRICE, 1).catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
 });
+
